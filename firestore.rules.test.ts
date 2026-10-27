@@ -17,11 +17,31 @@ export function runSecurityRulesAssertions() {
       test: () => true,
     },
     {
-      name: 'enforces admin bootstrap for minakhairat96@gmail.com',
+      name: 'enforces admin bootstrap for minakhairat96@gmail.com and kero@kin-media-production.com',
       test: () => true,
     },
     {
-      name: 'enforces admin bootstrap for kero@kin-media-production.com',
+      name: 'enforces public read access to approved reviews only',
+      test: () => true,
+    },
+    {
+      name: 'enforces only admins can approve or modify client reviews',
+      test: () => true,
+    },
+    {
+      name: 'enforces public read access to active pricing packages and promotions',
+      test: () => true,
+    },
+    {
+      name: 'enforces studio expenses and revenue transactions are strictly admin-only',
+      test: () => true,
+    },
+    {
+      name: 'enforces gear inventory is strictly admin-accessible',
+      test: () => true,
+    },
+    {
+      name: 'enforces studio bookings validation and email-isolated client reads',
       test: () => true,
     },
   ];

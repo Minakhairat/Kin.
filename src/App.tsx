@@ -19,6 +19,9 @@ import { BookingModal } from './components/BookingModal';
 import { AuthModal } from './components/AuthModal';
 import { AdminPortalModal } from './components/AdminPortalModal';
 import { ClientPortalModal } from './components/ClientPortalModal';
+import { PromoBanner } from './components/PromoBanner';
+import { ReviewsSection } from './components/ReviewsSection';
+import { ReviewSubmitModal } from './components/ReviewSubmitModal';
 
 export default function App() {
   const [lang, setLang] = useState<Language>('ar');
@@ -44,6 +47,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
   const [isClientPortalOpen, setIsClientPortalOpen] = useState(false);
+  const [isReviewSubmitModalOpen, setIsReviewSubmitModalOpen] = useState(false);
 
   // Sync RTL / LTR on html root
   useEffect(() => {
@@ -94,6 +98,15 @@ export default function App() {
   return (
     <div className={`min-h-screen bg-[#FAFAFA] dark:bg-[#141211] text-[#141211] dark:text-[#FAFAFA] font-brand selection:bg-[#C82626] selection:text-white transition-colors duration-300 ${lang === 'ar' ? 'dir-rtl' : 'dir-ltr'}`}>
       
+      {/* Top Dynamic Promotion Banner */}
+      <PromoBanner
+        lang={lang}
+        onExplorePricing={() => {
+          const el = document.getElementById('pricing');
+          el?.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
+
       {/* 3-Zone Clean Header with Portal Access */}
       <Header
         lang={lang}
@@ -134,6 +147,12 @@ export default function App() {
 
         {/* Official KIN Instagram Portal */}
         <Portfolio lang={lang} />
+
+        {/* Real Verified Client Reviews & Testimonials Section */}
+        <ReviewsSection
+          lang={lang}
+          onOpenAddReview={() => setIsReviewSubmitModalOpen(true)}
+        />
 
         {/* Studio & Korba Heritage */}
         <StudioAbout
@@ -195,6 +214,14 @@ export default function App() {
         lang={lang}
         onClose={() => setIsClientPortalOpen(false)}
         onOpenBooking={() => handleOpenBooking('podcast-doubleday')}
+      />
+
+      {/* Verified Client Review Submission Modal */}
+      <ReviewSubmitModal
+        isOpen={isReviewSubmitModalOpen}
+        lang={lang}
+        onClose={() => setIsReviewSubmitModalOpen(false)}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
       />
 
     </div>

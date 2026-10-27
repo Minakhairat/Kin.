@@ -45,6 +45,13 @@ import {
   subscribeRevisions,
   updateRevisionStatus,
 } from '../services/deliverablesService';
+import { AdminReviewsTab } from './admin/AdminReviewsTab';
+import { AdminPricingCmsTab } from './admin/AdminPricingCmsTab';
+import { AdminFinancialsTab } from './admin/AdminFinancialsTab';
+import { AdminGearTab } from './admin/AdminGearTab';
+import { AdminCalendarTab } from './admin/AdminCalendarTab';
+import { InvoiceGeneratorModal } from './InvoiceGeneratorModal';
+import { Star, Tag, Camera, FileText, Receipt } from 'lucide-react';
 
 interface AdminPortalModalProps {
   isOpen: boolean;
@@ -53,6 +60,17 @@ interface AdminPortalModalProps {
   onOpenClientPortal: () => void;
 }
 
+export type AdminTab =
+  | 'dashboard'
+  | 'list'
+  | 'add'
+  | 'clients'
+  | 'reviews'
+  | 'pricing_cms'
+  | 'financials'
+  | 'calendar'
+  | 'gear';
+
 export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   isOpen,
   lang,
@@ -60,7 +78,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   onOpenClientPortal,
 }) => {
   const { user, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'list' | 'add' | 'clients'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -405,18 +424,78 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
         </div>
 
         {/* Navigation Tabs Bar */}
-        <div className="flex items-center justify-between px-6 py-2.5 bg-white dark:bg-[#1a1716] border-b border-black/8 dark:border-white/10 shrink-0 overflow-x-auto gap-3">
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center justify-between px-6 py-2.5 bg-white dark:bg-[#1a1716] border-b border-black/8 dark:border-white/10 shrink-0 overflow-x-auto gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'dashboard'
                   ? 'bg-[#C82626] text-white shadow-sm'
                   : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
               }`}
             >
-              <TrendingUp className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'الداشبورد والإحصائيات' : 'Dashboard'}</span>
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>{lang === 'ar' ? 'الداشبورد' : 'Dashboard'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('financials')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'financials'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+              <span>{lang === 'ar' ? 'الحسابات (P&L)' : 'Financials (P&L)'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'calendar'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-blue-500" />
+              <span>{lang === 'ar' ? 'جدول الحجوزات' : 'Studio Schedule'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('reviews')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'reviews'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
+              }`}
+            >
+              <Star className="w-3.5 h-3.5 text-amber-500" />
+              <span>{lang === 'ar' ? 'اعتماد التقييمات' : 'Reviews CMS'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('pricing_cms')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'pricing_cms'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5 text-rose-500" />
+              <span>{lang === 'ar' ? 'الأسعار والعروض' : 'Pricing & Deals'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('gear')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'gear'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
+              }`}
+            >
+              <Camera className="w-3.5 h-3.5 text-purple-500" />
+              <span>{lang === 'ar' ? 'عهدة المعدات' : 'Gear Inventory'}</span>
             </button>
 
             <button
@@ -424,14 +503,14 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                 setActiveTab('list');
                 resetForm();
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'list'
                   ? 'bg-[#C82626] text-white shadow-sm'
                   : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
               }`}
             >
-              <FolderGit2 className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'المشاريع والروابط' : 'Deliverables'}</span>
+              <FolderGit2 className="w-3.5 h-3.5" />
+              <span>{lang === 'ar' ? 'المشاريع والتسليمات' : 'Deliverables'}</span>
               <span className="px-1.5 py-0.2 rounded-full bg-black/15 dark:bg-white/20 text-[10px]">
                 {deliverables.length}
               </span>
@@ -442,37 +521,47 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                 setActiveTab('add');
                 if (editingId) resetForm();
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'add'
                   ? 'bg-[#C82626] text-white shadow-sm'
                   : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
               }`}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" />
               <span>
                 {editingId
                   ? lang === 'ar' ? 'تعديل المشروع' : 'Edit Project'
-                  : lang === 'ar' ? 'إضافة رابط جديد' : 'New Deliverable Link'}
+                  : lang === 'ar' ? 'إضافة رابط جديد' : 'New Link'}
               </span>
             </button>
 
             <button
               onClick={() => setActiveTab('clients')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'clients'
                   ? 'bg-[#C82626] text-white shadow-sm'
                   : 'text-[#141211]/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10'
               }`}
             >
-              <Users className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'دليل العملاء' : 'Clients Directory'}</span>
+              <Users className="w-3.5 h-3.5" />
+              <span>{lang === 'ar' ? 'العملاء' : 'Clients'}</span>
               <span className="px-1.5 py-0.2 rounded-full bg-black/15 dark:bg-white/20 text-[10px]">
                 {clientEmailMap.size}
               </span>
             </button>
           </div>
 
-          <div className="hidden sm:flex items-center gap-3 text-xs text-[#141211]/60 dark:text-white/60">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsInvoiceModalOpen(true)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 text-xs font-bold hover:opacity-90 shadow transition-all cursor-pointer shrink-0"
+            >
+              <Receipt className="w-3.5 h-3.5 text-[#C82626]" />
+              <span>{lang === 'ar' ? 'فاتورة / عرض سعر' : 'New Invoice'}</span>
+            </button>
+          </div>
+
+          <div className="hidden lg:flex items-center gap-3 text-xs text-[#141211]/60 dark:text-white/60">
             <span className="flex items-center gap-1 font-mono">
               <Eye className="w-3.5 h-3.5 text-sky-500" />
               {totalViews} {lang === 'ar' ? 'مشاهدة' : 'views'}
@@ -1222,6 +1311,21 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* TAB 5: REVIEWS MODERATION */}
+          {activeTab === 'reviews' && <AdminReviewsTab lang={lang} />}
+
+          {/* TAB 6: DYNAMIC PRICING & PROMOTIONS CMS */}
+          {activeTab === 'pricing_cms' && <AdminPricingCmsTab lang={lang} />}
+
+          {/* TAB 7: FINANCIALS & P&L DASHBOARD */}
+          {activeTab === 'financials' && <AdminFinancialsTab lang={lang} />}
+
+          {/* TAB 8: STUDIO CALENDAR & BOOKINGS */}
+          {activeTab === 'calendar' && <AdminCalendarTab lang={lang} />}
+
+          {/* TAB 9: GEAR & EQUIPMENT INVENTORY */}
+          {activeTab === 'gear' && <AdminGearTab lang={lang} />}
         </div>
 
         {/* Client Revisions Side Drawer */}
@@ -1430,6 +1534,13 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Invoice & Quotation Generator Modal */}
+        <InvoiceGeneratorModal
+          isOpen={isInvoiceModalOpen}
+          lang={lang}
+          onClose={() => setIsInvoiceModalOpen(false)}
+        />
       </div>
     </div>
   );

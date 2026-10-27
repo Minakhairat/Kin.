@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PODCAST_PACKAGES, REELS_PACKAGES, ADDONS_DATA, COMPANY_INFO } from '../data/content';
-import { Language, PricingPackage } from '../types';
-import { Check, Star, Calculator, Image as ImageIcon, MessageCircle, Calendar, Plus, Sparkles, ShieldCheck } from 'lucide-react';
+import { Language, PricingPackage, PromotionItem, PackageCMSItem } from '../types';
+import { Check, Star, Calculator, Image as ImageIcon, MessageCircle, Calendar, Plus, Sparkles, Tag, ShieldCheck } from 'lucide-react';
+import { subscribePackagesCMS, subscribePromotions, isPromotionActive } from '../services/pricingCmsService';
 
 interface PricingCalculatorProps {
   lang: Language;
@@ -25,12 +26,57 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
   const [includeOutdoorShoot, setIncludeOutdoorShoot] = useState<boolean>(false);
   const [requestCustomSet, setRequestCustomSet] = useState<boolean>(false);
 
-  // Switch package list
-  const currentPackages = activeCategory === 'podcasts' ? PODCAST_PACKAGES : REELS_PACKAGES;
+  // Dynamic pricing from CMS and active promotions
+  const [cmsPackages, setCmsPackages] = useState<PackageCMSItem[]>([]);
+  const [activePromos, setActivePromos] = useState<PromotionItem[]>([]);
 
-  // Selected package object for calculator
-  const allPackages = [...PODCAST_PACKAGES, ...REELS_PACKAGES];
-  const currentSelectedPkg = allPackages.find((p) => p.id === selectedPackageId) || PODCAST_PACKAGES[2];
+  useEffect(() => {
+    const unsubPkg = subscribePackagesCMS((packages) => {
+      if (packages && packages.length > 0) {
+        setCmsPackages(packages);
+      }
+    });
+
+    const unsubPromo = subscribePromotions((promos) => {
+      const live = promos.filter(isPromotionActive);
+      setActivePromos(live);
+    });
+
+    return () => {
+      unsubPkg();
+      unsubPromo();
+    };
+  }, []);
+
+  // Determine active promo for current category
+  const activePromo = activePromos.find(
+    (p) => p.applicableCategory === 'all' || p.applicableCategory === activeCategory
+  );
+
+  // Helper to merge base package with CMS & Promo
+  const enrichPackage = (basePkg: PricingPackage): PricingPackage => {
+    const cmsMatch = cmsPackages.find((p) => p.id === basePkg.id && p.isActive !== false);
+    let price = cmsMatch ? cmsMatch.priceEGP : basePkg.price;
+    let originalPrice: number | undefined = cmsMatch?.originalPriceEGP;
+
+    // Apply active promotional discount
+    if (activePromo && activePromo.discountPercent > 0) {
+      originalPrice = price;
+      price = Math.round(price * (1 - activePromo.discountPercent / 100));
+    }
+
+    return {
+      ...basePkg,
+      price,
+      originalPrice,
+      activePromoDiscount: activePromo?.discountPercent,
+      isCustomPrice: !!cmsMatch || !!activePromo,
+    };
+  };
+
+  const currentPackages = (activeCategory === 'podcasts' ? PODCAST_PACKAGES : REELS_PACKAGES).map(enrichPackage);
+  const allPackages = [...PODCAST_PACKAGES, ...REELS_PACKAGES].map(enrichPackage);
+  const currentSelectedPkg = allPackages.find((p) => p.id === selectedPackageId) || currentPackages[0];
 
   // Calculate live total price
   const calculateTotal = (): number => {
@@ -48,6 +94,8 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
 
   const generateWhatsAppUrl = (pkg: PricingPackage, isCustom = false) => {
     let text = '';
+    const promoCodeNotice = activePromo?.code ? ` (كود الخصم: ${activePromo.code})` : '';
+
     if (isCustom) {
       text =
         lang === 'ar'
@@ -56,18 +104,18 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
             (includeOutdoorShoot ? `- تصوير خارجي: نعم (+4000 ج)\n` : '') +
             (extraHours > 0 ? `- ساعات إضافية: ${extraHours} (+${extraHours * 1000} ج)\n` : '') +
             (requestCustomSet ? `- طلب ديكور مخصص أو خلفية AI: نعم\n` : '') +
-            `- الإجمالي التقديري: ${currentTotal.toLocaleString()} ج.م\nأرجو إفادتي بأقرب المواعيد المتاحة في استوديو الكوربة.`
+            `- الإجمالي التقديري: ${currentTotal.toLocaleString()} ج.م${promoCodeNotice}\nأرجو إفادتي بأقرب المواعيد المتاحة في استوديو الكوربة.`
           : `Hello KIN Media Production, I would like to book the following configuration:\n- Package: ${currentSelectedPkg.name} (${currentSelectedPkg.category})\n` +
             (extraGuests > 0 ? `- Extra Guests: ${extraGuests} (+${extraGuests * 3500} EGP)\n` : '') +
             (includeOutdoorShoot ? `- Outdoor Shoot: Yes (+4000 EGP)\n` : '') +
             (extraHours > 0 ? `- Extra Hours: ${extraHours} (+${extraHours * 1000} EGP)\n` : '') +
             (requestCustomSet ? `- Custom Set / AI Backdrop: Yes\n` : '') +
-            `- Total Estimated: ${currentTotal.toLocaleString()} EGP\nPlease let me know available recording slots in Korba studio.`;
+            `- Total Estimated: ${currentTotal.toLocaleString()} EGP${promoCodeNotice}\nPlease let me know available recording slots in Korba studio.`;
     } else {
       text =
         lang === 'ar'
-          ? `مرحباً استوديو KIN، أود حجز باقة "${pkg.name}" (${pkg.category === 'podcasts' ? 'بودكاست ولقاءات' : 'ريلز شهرية'}) بسعر ${pkg.price.toLocaleString()} ج.م. أرجو تأكيد المواعيد المتاحة.`
-          : `Hello KIN Studio, I want to book the "${pkg.name}" package (${pkg.category}) for ${pkg.price.toLocaleString()} EGP. Please confirm available slots.`;
+          ? `مرحباً استوديو KIN، أود حجز باقة "${pkg.name}" (${pkg.category === 'podcasts' ? 'بودكاست ولقاءات' : 'ريلز شهرية'}) بسعر ${pkg.price.toLocaleString()} ج.م${promoCodeNotice}. أرجو تأكيد المواعيد المتاحة.`
+          : `Hello KIN Studio, I want to book the "${pkg.name}" package (${pkg.category}) for ${pkg.price.toLocaleString()} EGP${promoCodeNotice}. Please confirm available slots.`;
     }
     return `https://wa.me/${COMPANY_INFO.whatsappNumbers[0]}?text=${encodeURIComponent(text)}`;
   };
@@ -79,9 +127,18 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
         {/* Section Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div className="max-w-3xl">
-            <p className="text-xs font-bold uppercase tracking-widest text-[#C82626] mb-3">
-              {lang === 'ar' ? 'الشفافية الكاملة' : 'Transparent Pricing'}
-            </p>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-[#C82626]">
+                {lang === 'ar' ? 'الشفافية الكاملة' : 'Transparent Pricing'}
+              </span>
+              {activePromo && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/10 text-[#C82626] border border-red-500/20 text-xs font-bold animate-pulse">
+                  <Sparkles className="w-3 h-3" />
+                  {lang === 'ar' ? `عرض نشط - خصم ${activePromo.discountPercent}%` : `Active Offer: ${activePromo.discountPercent}% OFF`}
+                </span>
+              )}
+            </div>
+
             <h2 className="text-3xl sm:text-4xl font-extrabold text-[#141211] dark:text-white tracking-tight leading-tight text-balance">
               {lang === 'ar' ? 'الباكدجات والأسعار الرسمية' : 'Official Studio Packages & Rates'}
             </h2>
@@ -190,11 +247,23 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
 
                   {/* Price Block */}
                   <div className="mb-6 pb-6 border-b border-black/8 dark:border-white/10">
+                    {/* Crossed-out original price if discount applied */}
+                    {pkg.originalPrice && pkg.originalPrice > pkg.price && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm line-through text-neutral-400 font-mono">
+                          {pkg.originalPrice.toLocaleString()} EGP
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500 text-white">
+                          -{pkg.activePromoDiscount}%
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex items-baseline gap-1.5">
                       <span className={`text-3xl sm:text-4xl font-extrabold font-mono tabular-nums tracking-tight ${isRec ? 'text-white' : 'text-[#141211] dark:text-white'}`}>
                         {pkg.price.toLocaleString()}
                       </span>
-                      <span className={`text-xs font-semibold ${isRec ? 'text-[#C82626]' : 'text-[#C82626]'}`}>
+                      <span className="text-xs font-semibold text-[#C82626]">
                         {lang === 'ar' ? 'ج.م' : 'EGP'}
                       </span>
                     </div>
@@ -210,7 +279,7 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
                   <ul className="space-y-3 mb-8 text-xs sm:text-sm">
                     {(lang === 'ar' ? pkg.featuresAr : pkg.featuresEn).map((feature, idx) => (
                       <li key={idx} className="flex items-start gap-2.5">
-                        <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isRec ? 'text-[#C82626]' : 'text-[#C82626]'}`} />
+                        <Check className="w-4 h-4 shrink-0 mt-0.5 text-[#C82626]" />
                         <span className={isRec ? 'text-white/85' : 'text-[#141211]/80 dark:text-white/80'}>
                           {feature}
                         </span>
@@ -238,7 +307,7 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
                   <button
                     onClick={() => {
                       setSelectedPackageId(pkg.id);
-                      onOpenBooking(pkg.id);
+                      onOpenBooking(pkg.id, [], pkg.price);
                     }}
                     className={`w-full text-center py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
                       isRec
@@ -255,244 +324,188 @@ export const PricingCalculator: React.FC<PricingCalculatorProps> = ({
           })}
         </div>
 
-        {/* Add-ons & Overtime Strip */}
-        <div className="bg-[#FAFAFA] dark:bg-[#1C1A18] rounded-2xl p-6 sm:p-8 border border-black/8 dark:border-white/10 mb-16">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 pb-4 border-b border-black/8 dark:border-white/10">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#C82626]" />
-              <h4 className="text-base font-bold text-[#141211] dark:text-white">
-                {lang === 'ar' ? 'إضافات وخيارات الترقية المتاحة' : 'Available Add-ons & Upgrades'}
-              </h4>
-            </div>
-            <span className="text-xs text-[#141211]/60 dark:text-white/60">
-              {lang === 'ar' ? 'يمكن إضافتها مع أي باكدج' : 'Available on any package'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs sm:text-sm">
-            <div className="p-4 bg-white dark:bg-[#201D1B] rounded-xl border border-black/6 dark:border-white/10">
-              <div className="font-bold text-[#141211] dark:text-white">{lang === 'ar' ? 'ضيف زيادة' : 'Extra Guest'}</div>
-              <div className="text-[#C82626] font-mono font-bold mt-1">+3,500 {lang === 'ar' ? 'ج.م' : 'EGP'}</div>
-              <p className="text-xs text-[#141211]/60 dark:text-white/60 mt-1">{lang === 'ar' ? 'مايك إضافي وهندسة صوت مخصصة' : 'Dedicated mic & sound routing'}</p>
-            </div>
-
-            <div className="p-4 bg-white dark:bg-[#201D1B] rounded-xl border border-black/6 dark:border-white/10">
-              <div className="font-bold text-[#141211] dark:text-white">{lang === 'ar' ? 'تصوير خارجي' : 'Outdoor Shoot'}</div>
-              <div className="text-[#C82626] font-mono font-bold mt-1">+4,000 {lang === 'ar' ? 'ج.م' : 'EGP'}</div>
-              <p className="text-xs text-[#141211]/60 dark:text-white/60 mt-1">{lang === 'ar' ? 'انتقال الكرو والمعدات لموقعك' : 'Full crew & gear mobilization'}</p>
-            </div>
-
-            <div className="p-4 bg-white dark:bg-[#201D1B] rounded-xl border border-black/6 dark:border-white/10">
-              <div className="font-bold text-[#141211] dark:text-white">{lang === 'ar' ? 'ساعة تصوير زيادة' : 'Extra Studio Hour'}</div>
-              <div className="text-[#C82626] font-mono font-bold mt-1">+1,000 {lang === 'ar' ? 'ج.م' : 'EGP'}</div>
-              <p className="text-xs text-[#141211]/60 dark:text-white/60 mt-1">{lang === 'ar' ? 'ساعة إضافية بالاستوديو والكرو' : 'Additional hour in studio'}</p>
-            </div>
-
-            <div className="p-4 bg-white dark:bg-[#201D1B] rounded-xl border border-black/6 dark:border-white/10">
-              <div className="font-bold text-[#141211] dark:text-white">{lang === 'ar' ? 'ديكور مخصوص أو خلفية AI' : 'Custom Set / AI Backdrop'}</div>
-              <div className="text-[#C82626] font-mono font-bold mt-1">{lang === 'ar' ? 'بالاتفاق' : 'Quoted per show'}</div>
-              <p className="text-xs text-[#141211]/60 dark:text-white/60 mt-1">{lang === 'ar' ? 'خلفية افتراضية ثلاثية الأبعاد أو سيت خاص' : '3D virtual set or custom props'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Interactive Custom Quote Calculator Drawer/Box */}
-        <div className="bg-[#141211] text-white rounded-2xl p-6 sm:p-10 border border-black/20 shadow-2xl">
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 border-b border-white/10 mb-8">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#C82626] uppercase tracking-wider mb-1">
-                <Calculator className="w-4 h-4" />
-                <span>{lang === 'ar' ? 'حاسبة الباكدج الفورية' : 'Instant Package Customizer'}</span>
-              </div>
-              <h3 className="text-2xl font-bold tracking-tight">
-                {lang === 'ar' ? 'خصص جلستك واحسب التكلفة الإجمالية مباشرة' : 'Customize Your Production & Calculate Real-Time Quote'}
-              </h3>
-            </div>
-
-            {/* Live Price Display */}
-            <div className="bg-white/5 border border-white/15 px-6 py-3 rounded-xl flex items-baseline gap-2 shrink-0">
-              <span className="text-xs uppercase text-white/60">{lang === 'ar' ? 'التكلفة التقديرية:' : 'Estimated Total:'}</span>
-              <span className="text-3xl font-black font-mono tabular-nums text-white">
-                {currentTotal.toLocaleString()}
-              </span>
-              <span className="text-xs font-bold text-[#C82626]">{lang === 'ar' ? 'ج.م' : 'EGP'}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        {/* Live Interactive Session Customizer Calculator */}
+        <div className="bg-[#FAFAFA] dark:bg-[#1A1817] rounded-3xl border border-black/10 dark:border-white/15 p-6 sm:p-10 shadow-lg">
+          <div className="max-w-4xl mx-auto">
             
-            {/* Left Controls */}
-            <div className="lg:col-span-8 space-y-6">
-              {/* Select Package */}
-              <div>
-                <label className="block text-xs font-semibold uppercase text-white/70 mb-2">
-                  {lang === 'ar' ? 'اختر الباقة الأساسية:' : 'Select Base Package:'}
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {currentPackages.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setSelectedPackageId(p.id)}
-                      className={`p-3 rounded-lg text-left text-xs font-semibold transition-all cursor-pointer border ${
-                        selectedPackageId === p.id
-                          ? 'bg-[#C82626] border-[#C82626] text-white shadow'
-                          : 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10'
-                      }`}
-                    >
-                      <div className="font-bold">{p.name}</div>
-                      <div className="text-[11px] font-mono mt-0.5 opacity-90">{p.price.toLocaleString()} {lang === 'ar' ? 'ج' : 'EGP'}</div>
-                    </button>
-                  ))}
-                </div>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-xl bg-[#C82626]/10 text-[#C82626] flex items-center justify-center">
+                <Calculator className="w-5 h-5" />
               </div>
-
-              {/* Dynamic Add-ons according to Category */}
-              {currentSelectedPkg.category === 'podcasts' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Extra Guests */}
-                  <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">{lang === 'ar' ? 'ضيوف إضافيين (+3,500 ج/ضيف)' : 'Extra Guests (+3.5K EGP/guest)'}</div>
-                      <div className="text-xs text-white/60">{lang === 'ar' ? 'مايك + زاوية كاميرا مخصصة' : 'Dedicated mic & camera angle'}</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setExtraGuests(Math.max(0, extraGuests - 1))}
-                        className="w-8 h-8 rounded bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="font-mono text-base font-bold w-4 text-center">{extraGuests}</span>
-                      <button
-                        onClick={() => setExtraGuests(extraGuests + 1)}
-                        className="w-8 h-8 rounded bg-[#C82626] hover:bg-[#a31d1d] text-white flex items-center justify-center font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Custom Set */}
-                  <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">{lang === 'ar' ? 'ديكور مخصوص أو خلفية AI' : 'Custom Set / AI Backdrop'}</div>
-                      <div className="text-xs text-white/60">{lang === 'ar' ? 'يتم الاتفاق وتأكيد المتطلبات' : 'Quoted separately with production'}</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={requestCustomSet}
-                      onChange={(e) => setRequestCustomSet(e.target.checked)}
-                      className="w-5 h-5 accent-[#C82626] rounded cursor-pointer"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Outdoor Shoot */}
-                  <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">{lang === 'ar' ? 'تصوير خارجي (+4,000 ج)' : 'Outdoor Shoot (+4K EGP)'}</div>
-                      <div className="text-xs text-white/60">{lang === 'ar' ? 'تصوير في مقر شركتك أو موقعك' : 'Filming at your company or exterior'}</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={includeOutdoorShoot}
-                      onChange={(e) => setIncludeOutdoorShoot(e.target.checked)}
-                      className="w-5 h-5 accent-[#C82626] rounded cursor-pointer"
-                    />
-                  </div>
-
-                  {/* Extra Hours */}
-                  <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">{lang === 'ar' ? 'ساعات تصوير إضافية (+1,000 ج/ساعة)' : 'Extra Hours (+1K EGP/hr)'}</div>
-                      <div className="text-xs text-white/60">{lang === 'ar' ? 'وقت إضافي للاستوديو والكرو' : 'Additional hours booked'}</div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setExtraHours(Math.max(0, extraHours - 1))}
-                        className="w-8 h-8 rounded bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="font-mono text-base font-bold w-4 text-center">{extraHours}</span>
-                      <button
-                        onClick={() => setExtraHours(extraHours + 1)}
-                        className="w-8 h-8 rounded bg-[#C82626] hover:bg-[#a31d1d] text-white flex items-center justify-center font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div>
+                <h3 className="text-xl sm:text-2xl font-black text-[#141211] dark:text-white tracking-tight">
+                  {lang === 'ar' ? 'حاسبة الجلسة المخصصة' : 'Custom Session Calculator'}
+                </h3>
+                <p className="text-xs sm:text-sm text-[#141211]/60 dark:text-white/60">
+                  {lang === 'ar'
+                    ? 'اختر باقة وأضف ضيوف أو ساعات إضافية لحساب التكلفة التقديرية بدقة.'
+                    : 'Select a base package and tweak hours or guests for an accurate live quote.'}
+                </p>
+              </div>
             </div>
 
-            {/* Right Summary & Immediate Action */}
-            <div className="lg:col-span-4 bg-white/5 rounded-xl p-6 border border-white/10 flex flex-col justify-between h-full">
-              <div>
-                <p className="text-xs font-mono uppercase text-[#C82626] font-semibold mb-2">
-                  {lang === 'ar' ? 'ملخص الحجز المخصص' : 'Custom Config Summary'}
-                </p>
-                <div className="text-base font-bold">{currentSelectedPkg.name} — {currentSelectedPkg.category === 'podcasts' ? (lang === 'ar' ? 'بودكاست' : 'Podcast') : (lang === 'ar' ? 'ريلز' : 'Reels')}</div>
-                <div className="text-xs text-white/70 mt-1">{lang === 'ar' ? currentSelectedPkg.deliverablesAr : currentSelectedPkg.deliverablesEn}</div>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              
+              {/* Options Column */}
+              <div className="lg:col-span-7 space-y-6">
                 
-                <div className="my-4 pt-3 border-t border-white/10 text-xs space-y-1.5 text-white/75 font-mono">
-                  <div className="flex justify-between">
-                    <span>{lang === 'ar' ? 'السعر الأساسي:' : 'Base:'}</span>
-                    <span>{currentSelectedPkg.price.toLocaleString()} {lang === 'ar' ? 'ج' : 'EGP'}</span>
-                  </div>
-                  {extraGuests > 0 && (
-                    <div className="flex justify-between text-[#C82626]">
-                      <span>{lang === 'ar' ? `ضيوف إضافيين (${extraGuests}):` : `Extra Guests (${extraGuests}):`}</span>
-                      <span>+{(extraGuests * 3500).toLocaleString()} {lang === 'ar' ? 'ج' : 'EGP'}</span>
-                    </div>
-                  )}
-                  {includeOutdoorShoot && (
-                    <div className="flex justify-between text-[#C82626]">
-                      <span>{lang === 'ar' ? 'تصوير خارجي:' : 'Outdoor Shoot:'}</span>
-                      <span>+4,000 {lang === 'ar' ? 'ج' : 'EGP'}</span>
-                    </div>
-                  )}
-                  {extraHours > 0 && (
-                    <div className="flex justify-between text-[#C82626]">
-                      <span>{lang === 'ar' ? `ساعات زيادة (${extraHours}):` : `Extra Hours (${extraHours}):`}</span>
-                      <span>+{(extraHours * 1000).toLocaleString()} {lang === 'ar' ? 'ج' : 'EGP'}</span>
-                    </div>
-                  )}
+                {/* Select Base Package */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#141211]/70 dark:text-white/70 mb-2">
+                    {lang === 'ar' ? 'الباقة الأساسية:' : 'Base Package:'}
+                  </label>
+                  <select
+                    value={selectedPackageId}
+                    onChange={(e) => setSelectedPackageId(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-[#141211] border border-black/15 dark:border-white/20 text-[#141211] dark:text-white text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#C82626] cursor-pointer"
+                  >
+                    {allPackages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.category === 'podcasts' ? (lang === 'ar' ? 'بودكاست' : 'Podcast') : (lang === 'ar' ? 'ريلز' : 'Reels')}) — {p.price.toLocaleString()} EGP
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
+                {/* Podcast Specific Options */}
+                {currentSelectedPkg.category === 'podcasts' && (
+                  <div className="p-4 rounded-xl bg-white dark:bg-[#141211] border border-black/10 dark:border-white/10 space-y-3">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
+                      <span className="font-semibold text-[#141211] dark:text-white">
+                        {lang === 'ar' ? 'ضيوف إضافيين على الحلقة (+3,500 ج/ضيف)' : 'Extra Guests (+3,500 EGP/guest)'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setExtraGuests((prev) => Math.max(0, prev - 1))}
+                          className="w-7 h-7 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 text-sm font-bold flex items-center justify-center cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <span className="w-6 text-center font-bold font-mono">{extraGuests}</span>
+                        <button
+                          type="button"
+                          onClick={() => setExtraGuests((prev) => prev + 1)}
+                          className="w-7 h-7 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 text-sm font-bold flex items-center justify-center cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reels Specific Options */}
+                {currentSelectedPkg.category === 'reels' && (
+                  <div className="p-4 rounded-xl bg-white dark:bg-[#141211] border border-black/10 dark:border-white/10 space-y-4">
+                    <div className="flex items-center justify-between text-xs sm:text-sm">
+                      <span className="font-semibold text-[#141211] dark:text-white">
+                        {lang === 'ar' ? 'ساعات تصوير إضافية (+1,000 ج/ساعة)' : 'Extra Shoot Hours (+1,000 EGP/hr)'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setExtraHours((prev) => Math.max(0, prev - 1))}
+                          className="w-7 h-7 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 text-sm font-bold flex items-center justify-center cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <span className="w-6 text-center font-bold font-mono">{extraHours}</span>
+                        <button
+                          type="button"
+                          onClick={() => setExtraHours((prev) => prev + 1)}
+                          className="w-7 h-7 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 text-sm font-bold flex items-center justify-center cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-3 cursor-pointer pt-2 border-t border-black/5 dark:border-white/5">
+                      <input
+                        type="checkbox"
+                        checked={includeOutdoorShoot}
+                        onChange={(e) => setIncludeOutdoorShoot(e.target.checked)}
+                        className="w-4 h-4 accent-[#C82626] rounded cursor-pointer"
+                      />
+                      <span className="text-xs sm:text-sm text-[#141211] dark:text-white font-medium">
+                        {lang === 'ar' ? 'إضافة يوم تصوير خارجي Outdoor (+4,000 ج)' : 'Add Outdoor Shoot Day (+4,000 EGP)'}
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Custom Decor / AI Backdrop Add-on */}
+                <label className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-[#141211] border border-black/10 dark:border-white/10 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={requestCustomSet}
+                    onChange={(e) => setRequestCustomSet(e.target.checked)}
+                    className="w-4 h-4 accent-[#C82626] rounded cursor-pointer"
+                  />
+                  <div className="text-xs sm:text-sm">
+                    <span className="font-semibold text-[#141211] dark:text-white block">
+                      {lang === 'ar' ? 'طلب تصميم ديكور مخصص بالاستوديو أو خلفية AI خاصة' : 'Custom Studio Set Design or Custom AI Virtual Backdrop'}
+                    </span>
+                    <span className="text-[11px] text-[#141211]/60 dark:text-white/60">
+                      {lang === 'ar' ? 'يتم تحديد التكلفة مع مهندس الديكور حسب المطلوب' : 'Cost quoted based on set specs and materials'}
+                    </span>
+                  </div>
+                </label>
+
               </div>
 
-              <div className="space-y-3 pt-2">
-                <a
-                  href={generateWhatsAppUrl(currentSelectedPkg, true)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 py-3.5 text-xs font-bold text-white bg-[#C82626] hover:bg-[#a31d1d] rounded shadow cursor-pointer transition-all active:scale-[0.98]"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'إرسال الحجز لواتساب الاستوديو' : 'Send Quote to WhatsApp'}</span>
-                </a>
+              {/* Total Summary Card Column */}
+              <div className="lg:col-span-5 bg-[#141211] dark:bg-black text-white p-6 sm:p-8 rounded-2xl border border-white/10 flex flex-col justify-between shadow-xl">
+                <div>
+                  <span className="text-xs font-mono uppercase tracking-widest text-[#C82626] font-bold block mb-1">
+                    {lang === 'ar' ? 'التكلفة الإجمالية التقديرية' : 'ESTIMATED TOTAL'}
+                  </span>
+                  
+                  <div className="flex items-baseline gap-2 my-4">
+                    <span className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-white">
+                      {currentTotal.toLocaleString()}
+                    </span>
+                    <span className="text-sm font-bold text-[#C82626]">
+                      {lang === 'ar' ? 'ج.م' : 'EGP'}
+                    </span>
+                  </div>
 
-                <button
-                  onClick={() =>
-                    onOpenBooking(
-                      currentSelectedPkg.id,
-                      [
-                        extraGuests > 0 ? `Extra Guests: ${extraGuests}` : '',
-                        includeOutdoorShoot ? 'Outdoor Shoot' : '',
-                        extraHours > 0 ? `Extra Hours: ${extraHours}` : '',
-                        requestCustomSet ? 'Custom Set / AI Backdrop' : '',
-                      ].filter(Boolean),
-                      currentTotal
-                    )
-                  }
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white bg-white/10 hover:bg-white/20 rounded transition-colors cursor-pointer"
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>{lang === 'ar' ? 'تحديد ميعاد في الفورم' : 'Schedule via Booking Form'}</span>
-                </button>
+                  <p className="text-xs text-white/70 mb-6 leading-relaxed">
+                    {lang === 'ar'
+                      ? `تشمل باقة "${currentSelectedPkg.name}" بجميع كاميراتها، إضاءتها، هندسة الصوت، والمونتاج المعتمد.`
+                      : `Includes the "${currentSelectedPkg.name}" package with all cameras, pro lighting, audio engineering & color grade.`}
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-4 border-t border-white/10">
+                  <a
+                    href={generateWhatsAppUrl(currentSelectedPkg, true)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#C82626] hover:bg-[#a81e1e] text-white text-xs sm:text-sm font-bold rounded-xl shadow transition-all cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{lang === 'ar' ? 'تأكيد الحجز المخصص عبر واتساب' : 'Confirm Custom Quote on WhatsApp'}</span>
+                  </a>
+
+                  <button
+                    onClick={() => {
+                      const addons: string[] = [];
+                      if (extraGuests > 0) addons.push(`${extraGuests} ضيوف إضافيين`);
+                      if (extraHours > 0) addons.push(`${extraHours} ساعات إضافية`);
+                      if (includeOutdoorShoot) addons.push('تصوير خارجي');
+                      if (requestCustomSet) addons.push('ديكور مخصص');
+                      onOpenBooking(currentSelectedPkg.id, addons, currentTotal);
+                    }}
+                    className="w-full text-center py-2.5 text-xs font-bold text-white/80 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                  >
+                    {lang === 'ar' ? 'حجز التاريخ في الاستوديو' : 'Reserve Session Date Online'}
+                  </button>
+                </div>
+
               </div>
+
             </div>
 
           </div>
