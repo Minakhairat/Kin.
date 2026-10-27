@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile in Kin Media Production",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID (auth UID)", "maxLength": 128 },
+        "email": { "type": "string", "description": "User email address", "maxLength": 256 },
+        "displayName": { "type": "string", "description": "Display name of the user", "maxLength": 128 },
+        "role": { "type": "string", "description": "Role of the user: admin or client", "enum": ["admin", "client"] },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation" }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Admin access permission record",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Email address of admin", "maxLength": 256 },
+        "createdAt": { "type": "string", "description": "ISO timestamp when admin role was granted" }
+      },
+      "required": ["email"]
+    },
+    "Deliverable": {
+      "title": "Deliverable",
+      "description": "Media project deliverable and link assigned by admin to client email",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Deliverable ID", "maxLength": 128 },
+        "title": { "type": "string", "description": "Project or session title", "maxLength": 200 },
+        "clientEmail": { "type": "string", "description": "Target client email permitted to access link", "maxLength": 256 },
+        "clientName": { "type": "string", "description": "Client name or brand", "maxLength": 128 },
+        "clientPhone": { "type": "string", "description": "Client phone number for WhatsApp dispatch", "maxLength": 32 },
+        "link": { "type": "string", "description": "Secure deliverable link (Drive, Frame.io, etc)", "maxLength": 1000 },
+        "previewVideoUrl": { "type": "string", "description": "Direct video or embed preview URL", "maxLength": 1000 },
+        "status": { "type": "string", "description": "Production state", "enum": ["shooting", "editing", "review", "delivered"] },
+        "serviceType": { "type": "string", "description": "Type of service", "enum": ["podcast", "reels", "commercial", "other"] },
+        "recordingDate": { "type": "string", "description": "Shoot date string", "maxLength": 64 },
+        "expiresAt": { "type": "string", "description": "ISO date string when link access expires", "maxLength": 64 },
+        "notes": { "type": "string", "description": "Session and editing notes for client", "maxLength": 2000 },
+        "viewCount": { "type": "number", "description": "Total views recorded" },
+        "downloadCount": { "type": "number", "description": "Total download clicks" },
+        "lastViewedAt": { "type": "string", "description": "ISO timestamp of last client access", "maxLength": 64 },
+        "createdBy": { "type": "string", "description": "Admin user ID who created deliverable", "maxLength": 128 },
+        "createdAt": { "type": "string", "description": "Timestamp created" },
+        "updatedAt": { "type": "string", "description": "Timestamp updated" }
+      },
+      "required": ["id", "title", "clientEmail", "link", "status", "createdBy"]
+    },
+    "Revision": {
+      "title": "Revision",
+      "description": "Client revision note or feedback on deliverable",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Revision ID", "maxLength": 128 },
+        "deliverableId": { "type": "string", "description": "Parent deliverable ID", "maxLength": 128 },
+        "authorEmail": { "type": "string", "description": "Email of author", "maxLength": 256 },
+        "authorUid": { "type": "string", "description": "UID of author", "maxLength": 128 },
+        "comment": { "type": "string", "description": "Revision comment", "maxLength": 1000 },
+        "timecode": { "type": "string", "description": "Video timestamp for revision (e.g. 03:45)", "maxLength": 32 },
+        "category": { "type": "string", "description": "Revision category", "enum": ["cut", "audio", "color", "caption", "general"] },
+        "status": { "type": "string", "description": "Revision status", "enum": ["pending", "in_progress", "resolved"] },
+        "adminReply": { "type": "string", "description": "Admin reply note", "maxLength": 1000 },
+        "createdAt": { "type": "string", "description": "Timestamp created" }
+      },
+      "required": ["id", "deliverableId", "authorEmail", "authorUid", "comment"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile records indexed by auth UID"
+    },
+    "/admins/{userId}": {
+      "schema": "Admin",
+      "description": "Admin privileges collection indexed by user UID"
+    },
+    "/deliverables/{deliverableId}": {
+      "schema": "Deliverable",
+      "description": "Project deliverables containing secure media links targeted by client email"
+    },
+    "/deliverables/{deliverableId}/revisions/{revisionId}": {
+      "schema": "Revision",
+      "description": "Client revision and feedback requests per deliverable"
+    }
+  }
+}
